@@ -1,10 +1,12 @@
 import tkinter as tk
-from tkinter import filedialog, messagebox, scrolledtext
+from tkinter import filedialog, messagebox, scrolledtext, ttk
 import threading
 import os
 import re
 import zipfile
 import tempfile
+import subprocess
+import platform
 
 try:
     from oletools.olevba import VBA_Parser
@@ -39,6 +41,13 @@ class SimpleVBAExtractor:
             "bg_input": "#3c3c3c",
             "fg_text": "#d4d4d4",
             "fg_comment": "#6a9955",
+            "keyword": "#569cd6",
+            "string": "#ce9178",
+            "number": "#b5cea8",
+            "builtin": "#dcdcaa",
+            "type": "#4ec9b0",
+            "operator": "#d4d4d4",
+            "separator": "#555555",
             "accent_green": "#4e9a06",
             "accent_blue": "#3584e4",
             "accent_orange": "#cd9309",
@@ -55,6 +64,13 @@ class SimpleVBAExtractor:
             "bg_input": "#ffffff",
             "fg_text": "#1a1a1a",
             "fg_comment": "#008000",
+            "keyword": "#0000ff",
+            "string": "#a31515",
+            "number": "#098658",
+            "builtin": "#795e26",
+            "type": "#267f99",
+            "operator": "#1a1a1a",
+            "separator": "#cccccc",
             "accent_green": "#2e7d32",
             "accent_blue": "#1976d2",
             "accent_orange": "#ed6c02",
@@ -66,6 +82,41 @@ class SimpleVBAExtractor:
             "selection": "#1976d2",
         }
     }
+
+    VBA_KEYWORDS = [
+        "As", "Binary", "ByRef", "ByVal", "Date", "Else", "Empty", "Error", "False", "For",
+        "Friend", "Get", "Input", "Is", "Len", "Let", "Lock", "Me", "Mid", "New", "Next",
+        "Nothing", "Null", "On", "Option", "Optional", "ParamArray", "Print", "Private",
+        "Property", "Public", "Resume", "Seek", "Set", "Static", "Step", "String", "Then",
+        "Time", "To", "True", "WithEvents", "And", "Eqv", "Imp", "Not", "Or", "Xor",
+        "Call", "Case", "Close", "Const", "Declare", "Dim", "Do", "Each", "ElseIf", "End",
+        "Enum", "Erase", "Event", "Exit", "Function", "GoSub", "GoTo", "If", "Implements",
+        "In", "Loop", "LSet", "Open", "Preserve", "RaiseEvent", "ReDim", "Rem", "Return",
+        "RSet", "Select", "Stop", "Sub", "Type", "Unlock", "Wend", "While", "With",
+        "Write", "Attribute", "Global"
+    ]
+    VBA_BUILTIN_FUNCS = [
+        "Abs", "Array", "Asc", "Atn", "CBool", "CByte", "CCur", "CDate", "CDbl", "CInt",
+        "CLng", "CSng", "CStr", "CVar", "Choose", "Chr", "Command", "Cos", "CreateObject",
+        "CurDir", "Date", "DateAdd", "DateDiff", "DatePart", "DateSerial", "DateValue",
+        "Day", "DDB", "Dir", "DoEvents", "Environ", "EOF", "Error", "Exp", "FileAttr",
+        "FileDateTime", "FileLen", "Filter", "Format", "FormatCurrency", "FormatDateTime",
+        "FormatNumber", "FormatPercent", "FreeFile", "FV", "GetAllSettings", "GetAttr",
+        "GetObject", "GetSetting", "Hex", "Hour", "IIf", "InputBox", "InStr", "InStrRev",
+        "Int", "IPmt", "IRR", "IsArray", "IsDate", "IsEmpty", "IsError", "IsMissing",
+        "IsNull", "IsNumeric", "IsObject", "Join", "LBound", "LCase", "Left", "Len",
+        "Loc", "LOF", "Log", "LTrim", "Mid", "Minute", "MIRR", "Month", "MonthName",
+        "MsgBox", "Now", "NPer", "NPV", "Oct", "Partition", "Pmt", "PPmt", "PV", "QBColor",
+        "Rate", "Replace", "RGB", "Right", "Rnd", "Round", "RTrim", "Second", "Seek",
+        "Sgn", "Shell", "Sin", "SLN", "Space", "Spc", "Split", "Sqr", "Str", "StrComp",
+        "StrConv", "String", "StrReverse", "Switch", "SYD", "Tab", "Tan", "Time",
+        "Timer", "TimeSerial", "TimeValue", "Trim", "TypeName", "UBound", "UCase", "Val",
+        "VarType", "Weekday", "WeekdayName", "Year", "Execute", "Eval"
+    ]
+    VBA_TYPES = [
+        "Boolean", "Byte", "Currency", "Date", "Decimal", "Double", "Integer", "Long",
+        "LongLong", "Object", "Single", "String", "Variant"
+    ]
 
     def __init__(self, root):
         self.root = root
@@ -80,29 +131,24 @@ class SimpleVBAExtractor:
         self.modules = []
         self.current_module = -1
         self.last_hash_value = ""
-        self.hash_displayed = False          # флаг: сейчас показана информация о хэше
+        self.hash_displayed = False
 
-        # Ссылки на все виджеты для надежной смены темы
         self.w = {}
-
         self._create_ui()
         self._apply_theme()
         self.show_welcome_message()
 
     def _create_ui(self):
         c = self.colors
-        # === Главный разделитель ===
         self.paned = tk.PanedWindow(self.root, orient=tk.HORIZONTAL, sashwidth=4, bd=1, relief=tk.SOLID)
         self.paned.pack(fill=tk.BOTH, expand=True, padx=6, pady=6)
 
-        # === Левая панель ===
+        # Левая панель
         self.left_frame = tk.Frame(self.paned, width=220, padx=4, pady=4)
         self.paned.add(self.left_frame, minsize=200)
         self.w["left_frame"] = self.left_frame
-
         tk.Label(self.left_frame, text="Модули", font=("Segoe UI", 9, "bold"), anchor="w").pack(pady=(0, 4))
         self.w["lbl_modules"] = self.left_frame.winfo_children()[0]
-
         self.modules_listbox = tk.Listbox(
             self.left_frame, font=("Consolas", 9), selectmode=tk.SINGLE,
             exportselection=False, relief=tk.SOLID, bd=1
@@ -111,17 +157,17 @@ class SimpleVBAExtractor:
         self.w["modules_listbox"] = self.modules_listbox
         self.modules_listbox.bind("<<ListboxSelect>>", self.on_module_select)
 
-        # === Правая панель ===
+        # Правая панель
         self.right_frame = tk.Frame(self.paned, padx=6, pady=4)
         self.paned.add(self.right_frame)
         self.w["right_frame"] = self.right_frame
 
-        # --- Верх: файл + тема ---
+        # Верх: поле ввода файла + кнопка Обзор + тема
         self.top_frame = tk.Frame(self.right_frame)
         self.top_frame.pack(pady=(0, 8), fill=tk.X)
         self.w["top_frame"] = self.top_frame
 
-        tk.Label(self.top_frame, text="Файл:", font=("Segoe UI", 9)).pack(side=tk.LEFT)
+        # Только поле ввода и кнопка "Обзор"
         self.file_entry = tk.Entry(self.top_frame, textvariable=self.file_path, width=52, font=("Consolas", 9), relief=tk.SOLID, bd=1)
         self.file_entry.pack(side=tk.LEFT, padx=6)
         self.w["file_entry"] = self.file_entry
@@ -134,68 +180,146 @@ class SimpleVBAExtractor:
         self.btn_theme.pack(side=tk.RIGHT)
         self.w["btn_theme"] = self.btn_theme
 
-        # --- Кнопки действий ---
+        # Кнопки действий
         self.btn_frame = tk.Frame(self.right_frame)
         self.btn_frame.pack(pady=(0, 8), fill=tk.X)
         self.w["btn_frame"] = self.btn_frame
-
         btn_opts = {"font": ("Segoe UI", 9), "relief": tk.RAISED, "bd": 2, "padx": 14, "pady": 4}
-
         self.btn_extract_vba = tk.Button(self.btn_frame, text="Извлечь VBA", command=self.extract_vba_threaded, **btn_opts)
         self.btn_extract_vba.pack(side=tk.LEFT, padx=3)
         self.w["btn_extract_vba"] = self.btn_extract_vba
-
         self.btn_extract_hash = tk.Button(self.btn_frame, text="Извлечь хэш пароля", command=self.extract_hash_threaded, **btn_opts)
         self.btn_extract_hash.pack(side=tk.LEFT, padx=3)
         self.w["btn_extract_hash"] = self.btn_extract_hash
-
         self.btn_copy_hash = tk.Button(self.btn_frame, text="Копировать хэш", command=self.copy_hash_only, state=tk.DISABLED, **btn_opts)
-        # Скрыта по умолчанию
         self.btn_copy_hash.pack_forget()
         self.w["btn_copy_hash"] = self.btn_copy_hash
 
-        # --- Область вывода ---
+        self.progress = ttk.Progressbar(self.right_frame, mode='indeterminate')
+        self.w["progress"] = self.progress
+
+        # Область вывода
         self.output_text = scrolledtext.ScrolledText(
             self.right_frame, wrap=tk.WORD, font=("Consolas", 10),
             relief=tk.SOLID, bd=1, padx=8, pady=6
         )
         self.output_text.pack(pady=(0, 6), fill=tk.BOTH, expand=True)
         self.w["output_text"] = self.output_text
+        self._configure_syntax_tags()
 
-        self.output_text.tag_configure("comment", foreground=c["fg_comment"])
-        self.output_text.tag_configure("hash_line", foreground=c["accent_blue"], font=("Consolas", 10, "bold"))
-        self.output_text.tag_configure("cmd", foreground="#569cd6")
-        self.output_text.tag_configure("section", font=("Segoe UI", 10, "bold"))
-
-        # --- Нижние кнопки ---
+        # Нижние кнопки
         self.action_frame = tk.Frame(self.right_frame)
         self.action_frame.pack(pady=(0, 4), fill=tk.X)
         self.w["action_frame"] = self.action_frame
-
         action_opts = {"font": ("Segoe UI", 9), "relief": tk.RAISED, "bd": 2, "padx": 12, "pady": 3}
-
         self.w["btn_copy_mod"] = tk.Button(self.action_frame, text="Копировать модуль", command=self.copy_current_module, **action_opts)
         self.w["btn_copy_mod"].pack(side=tk.LEFT, padx=2)
         self.w["btn_copy_all"] = tk.Button(self.action_frame, text="Копировать всё", command=self.copy_all, **action_opts)
         self.w["btn_copy_all"].pack(side=tk.LEFT, padx=2)
         self.w["btn_save_mod"] = tk.Button(self.action_frame, text="Сохранить модуль", command=self.save_current_module, **action_opts)
         self.w["btn_save_mod"].pack(side=tk.LEFT, padx=2)
-        self.w["btn_save_all"] = tk.Button(self.action_frame, text="Сохранить всё", command=self.save_all_modules, **action_opts)
+        self.w["btn_save_all"] = tk.Button(self.action_frame, text="Сохранить всё (ZIP)", command=self.save_all_to_zip, **action_opts)
         self.w["btn_save_all"].pack(side=tk.LEFT, padx=2)
         self.w["btn_show_all"] = tk.Button(self.action_frame, text="Показать все", command=self.show_all_modules, **action_opts)
         self.w["btn_show_all"].pack(side=tk.LEFT, padx=2)
+        self.w["btn_open_txt"] = tk.Button(self.action_frame, text="Открыть в .txt", command=self.open_current_in_txt, **action_opts)
+        self.w["btn_open_txt"].pack(side=tk.LEFT, padx=2)
         self.w["btn_clear"] = tk.Button(self.action_frame, text="Очистить", command=self.clear_output, **action_opts)
         self.w["btn_clear"].pack(side=tk.LEFT, padx=2)
 
         self.create_context_menu()
         self.setup_hotkeys()
 
+    # ---------- Подсветка синтаксиса VBA ----------
+    def _configure_syntax_tags(self):
+        c = self.colors
+        tags = {
+            "keyword": {"foreground": c["keyword"], "font": ("Consolas", 10, "bold")},
+            "string": {"foreground": c["string"]},
+            "number": {"foreground": c["number"]},
+            "builtin": {"foreground": c["builtin"]},
+            "type": {"foreground": c["type"]},
+            "comment": {"foreground": c["fg_comment"]},
+            "separator": {"foreground": c["separator"], "font": ("Consolas", 8)},
+            "operator": {"foreground": c["operator"]},
+        }
+        for tag, conf in tags.items():
+            self.output_text.tag_configure(tag, **conf)
+
+    def apply_syntax_highlighting(self):
+        text_widget = self.output_text
+        content = text_widget.get("1.0", tk.END)
+        for tag in ("keyword", "string", "number", "builtin", "type", "comment", "separator", "operator"):
+            text_widget.tag_remove(tag, "1.0", tk.END)
+
+        # Числа
+        for match in re.finditer(r'\b\d+\.?\d*([eE][+-]?\d+)?\b', content):
+            start_idx = f"1.0 + {match.start()} chars"
+            end_idx = f"1.0 + {match.end()} chars"
+            text_widget.tag_add("number", start_idx, end_idx)
+
+        # Ключевые слова
+        for kw in self.VBA_KEYWORDS:
+            for match in re.finditer(r'\b' + re.escape(kw) + r'\b', content):
+                start_idx = f"1.0 + {match.start()} chars"
+                end_idx = f"1.0 + {match.end()} chars"
+                text_widget.tag_add("keyword", start_idx, end_idx)
+
+        # Встроенные функции
+        for func in self.VBA_BUILTIN_FUNCS:
+            for match in re.finditer(r'\b' + re.escape(func) + r'\b', content):
+                start_idx = f"1.0 + {match.start()} chars"
+                end_idx = f"1.0 + {match.end()} chars"
+                text_widget.tag_add("builtin", start_idx, end_idx)
+
+        # Типы данных
+        for typ in self.VBA_TYPES:
+            for match in re.finditer(r'\b' + re.escape(typ) + r'\b', content):
+                start_idx = f"1.0 + {match.start()} chars"
+                end_idx = f"1.0 + {match.end()} chars"
+                text_widget.tag_add("type", start_idx, end_idx)
+
+        # Разделители (линия из тире)
+        for match in re.finditer(r'^─+$', content, re.MULTILINE):
+            line_num = content[:match.start()].count('\n') + 1
+            start_idx = f"{line_num}.0"
+            end_idx = f"{line_num}.end"
+            text_widget.tag_add("separator", start_idx, end_idx)
+
+        # Строки (с поддержкой экранирования "")
+        for match in re.finditer(r'"(?:[^"]|"")*"', content):
+            start_idx = f"1.0 + {match.start()} chars"
+            end_idx = f"1.0 + {match.end()} chars"
+            text_widget.tag_add("string", start_idx, end_idx)
+
+        # Комментарии
+        for match in re.finditer(r"(?:^|\s)('[^\n]*|Rem\s[^\n]*)", content, re.IGNORECASE | re.MULTILINE):
+            start_idx = f"1.0 + {match.start()} chars"
+            end_idx = f"1.0 + {match.end()} chars"
+            text_widget.tag_add("comment", start_idx, end_idx)
+
+        # Поднимаем строки и комментарии выше всех остальных тегов
+        text_widget.tag_raise("string")
+        text_widget.tag_raise("comment")
+
+    def _insert_separators(self, code):
+        lines = code.splitlines()
+        new_lines = []
+        sep_line = "─" * 80
+        for i, line in enumerate(lines):
+            new_lines.append(line)
+            if re.match(r'^\s*End\s+(Sub|Function|Property)\b', line, re.IGNORECASE):
+                if i < len(lines) - 1:
+                    new_lines.append(sep_line)
+        return '\n'.join(new_lines)
+
     # ================== Тема ==================
     def toggle_theme(self):
         self.current_theme = "light" if self.current_theme == "dark" else "dark"
         self.colors = self.THEMES[self.current_theme]
         self._apply_theme()
-        self.highlight_comments()
+        if self.modules or self.hash_displayed:
+            self.apply_syntax_highlighting()
 
     def _apply_theme(self):
         c = self.colors
@@ -203,7 +327,6 @@ class SimpleVBAExtractor:
         self.w["left_frame"].configure(bg=c["bg_panel"])
         self.w["right_frame"].configure(bg=c["bg_main"])
         self.paned.configure(bg=c["border"])
-
         self.w["lbl_modules"].configure(bg=c["bg_panel"], fg=c["fg_text"])
         self.w["modules_listbox"].configure(
             bg=c["bg_input"], fg=c["fg_text"],
@@ -213,13 +336,11 @@ class SimpleVBAExtractor:
         self.w["top_frame"].configure(bg=c["bg_main"])
         self.w["btn_frame"].configure(bg=c["bg_main"])
         self.w["action_frame"].configure(bg=c["bg_main"])
-
         self.w["file_entry"].configure(
             bg=c["bg_input"], fg=c["fg_text"], insertbackground=c["fg_text"],
             highlightbackground=c["border"], highlightthickness=1
         )
 
-        # Кнопки
         btn_map = {
             "btn_browse": (c["btn_bg"], c["btn_fg"]),
             "btn_theme": (c["btn_bg"], c["btn_fg"]),
@@ -232,7 +353,7 @@ class SimpleVBAExtractor:
             if key in self.w:
                 self.w[key].configure(bg=bg, fg=fg, activebackground=self._darken(bg, 30), activeforeground="white")
 
-        for key in ["btn_copy_mod", "btn_copy_all", "btn_save_mod", "btn_save_all", "btn_show_all"]:
+        for key in ["btn_copy_mod", "btn_copy_all", "btn_save_mod", "btn_save_all", "btn_show_all", "btn_open_txt"]:
             if key in self.w:
                 self.w[key].configure(bg=c["btn_bg"], fg=c["btn_fg"], activebackground=c["btn_active"])
 
@@ -241,11 +362,7 @@ class SimpleVBAExtractor:
             highlightbackground=c["border"], highlightthickness=1,
             selectbackground=c["selection"], selectforeground="white"
         )
-        self.w["output_text"].tag_configure("comment", foreground=c["fg_comment"])
-        self.w["output_text"].tag_configure("hash_line", foreground=c["accent_blue"])
-        self.w["output_text"].tag_configure("cmd", foreground="#569cd6")
-
-        # Контекстное меню (пересоздаём с актуальными цветами)
+        self._configure_syntax_tags()
         self.create_context_menu()
 
     def _darken(self, color, amount=30):
@@ -284,29 +401,16 @@ class SimpleVBAExtractor:
         self.w["output_text"].see(tk.INSERT)
         return "break"
 
-    # ================== Подсветка комментариев ==================
-    def highlight_comments(self):
-        self.w["output_text"].tag_remove("comment", "1.0", tk.END)
-        text = self.w["output_text"].get("1.0", tk.END)
-        lines = text.splitlines()
-        line_num = 1
-        for line in lines:
-            match = re.search(r"(?:'|\b[Rr][Ee][Mm]\b)", line)
-            if match:
-                start = match.start()
-                self.w["output_text"].tag_add("comment", f"{line_num}.{start}", f"{line_num}.end")
-            line_num += 1
-
     # ================== Приветствие ==================
     def show_welcome_message(self):
         text = """VBA Extractor — извлечение макросов и хэшей паролей
 
-Поддерживаемые форматы: .xls, .xlsm, .xlsb, .xltm
+Поддерживаемые форматы: .xls, .xlsm, .xlsb, .xltm, .docm, .pptm, .xlam
 
 Требования: Python 3.6+, pip install oletools olefile
 
 Как использовать:
-  1. Нажмите "Обзор" и выберите файл Excel
+  1. Нажмите "Обзор" и выберите файл Excel/Word/PowerPoint с макросами
   2. Нажмите "Извлечь VBA" — код появится справа, модули — слева
   3. Нажмите "Извлечь хэш пароля" — получите хэш для подбора
   4. Кнопка "Копировать хэш" появится автоматически после извлечения
@@ -315,13 +419,14 @@ class SimpleVBAExtractor:
         self.w["output_text"].delete(1.0, tk.END)
         self.w["output_text"].insert(tk.END, text)
         self.w["output_text"].see("1.0")
-        self.highlight_comments()
+        self.apply_syntax_highlighting()
 
     # ================== Выбор файла ==================
     def select_file(self):
         filename = filedialog.askopenfilename(
-            title="Выберите файл Excel",
-            filetypes=[("Excel files", "*.xls *.xlsm *.xlsx *.xlsb *.xltm"), ("All files", "*.*")])
+            title="Выберите файл с макросами",
+            filetypes=[("Office files with macros", "*.xls *.xlsm *.xlsb *.xltm *.docm *.pptm *.xlam"),
+                       ("All files", "*.*")])
         if filename:
             self.file_path.set(filename)
             self._reset_buttons()
@@ -334,6 +439,15 @@ class SimpleVBAExtractor:
         self.last_hash_value = ""
         self.hash_displayed = False
 
+    # ================== Прогресс-бар ==================
+    def start_progress(self):
+        self.progress.pack(pady=(0, 6), fill=tk.X)
+        self.progress.start(10)
+
+    def stop_progress(self):
+        self.progress.stop()
+        self.progress.pack_forget()
+
     # ================== Извлечение VBA ==================
     def extract_vba_threaded(self):
         if not self.file_path.get():
@@ -344,6 +458,7 @@ class SimpleVBAExtractor:
         self.w["btn_extract_hash"].config(state=tk.DISABLED)
         self.w["output_text"].delete(1.0, tk.END)
         self.modules_listbox.delete(0, tk.END)
+        self.start_progress()
         thread = threading.Thread(target=self.extract_vba)
         thread.daemon = True
         thread.start()
@@ -371,6 +486,7 @@ class SimpleVBAExtractor:
         self.root.after(0, self.on_extraction_complete)
 
     def on_extraction_complete(self):
+        self.stop_progress()
         self.hash_displayed = False
         self.modules_listbox.delete(0, tk.END)
         self.current_module = -1
@@ -390,9 +506,10 @@ class SimpleVBAExtractor:
     def display_module(self, index):
         if 0 <= index < len(self.modules):
             _, code = self.modules[index]
+            display_code = self._insert_separators(code)
             self.w["output_text"].delete(1.0, tk.END)
-            self.w["output_text"].insert(tk.END, code)
-            self.highlight_comments()
+            self.w["output_text"].insert(tk.END, display_code)
+            self.apply_syntax_highlighting()
             self.w["output_text"].see("1.0")
             self.hash_displayed = False
 
@@ -407,12 +524,13 @@ class SimpleVBAExtractor:
         self.hash_displayed = False
         if not self.modules:
             self.w["output_text"].insert(tk.END, self.extraction_info)
+            self.apply_syntax_highlighting()
             return
         self.w["output_text"].insert(tk.END, self.extraction_info + "\n" + "-"*50 + "\n")
         for name, code in self.modules:
             self.w["output_text"].insert(tk.END, f"\n' Module: {name}\n")
-            self.w["output_text"].insert(tk.END, code + "\n" + "-"*50 + "\n")
-        self.highlight_comments()
+            self.w["output_text"].insert(tk.END, self._insert_separators(code) + "\n" + "-"*50 + "\n")
+        self.apply_syntax_highlighting()
         self.w["output_text"].see("1.0")
 
     # ================== Извлечение хэша ==================
@@ -425,6 +543,7 @@ class SimpleVBAExtractor:
         self.w["btn_extract_vba"].config(state=tk.DISABLED)
         self.w["output_text"].delete(1.0, tk.END)
         self.last_hash_value = ""
+        self.start_progress()
         thread = threading.Thread(target=self.extract_hash)
         thread.daemon = True
         thread.start()
@@ -454,10 +573,12 @@ class SimpleVBAExtractor:
                             temp_file = ole_data
                     else:
                         self.root.after(0, self.display_result, "❌ Не найден vbaProject.bin в архиве.")
+                        self.root.after(0, self.stop_progress)
                         return
 
             if not olefile.isOleFile(ole_data):
                 self.root.after(0, self.display_result, "❌ Ошибка: не удалось прочитать OLE-структуру.")
+                self.root.after(0, self.stop_progress)
                 return
 
             ole = olefile.OleFileIO(ole_data)
@@ -469,76 +590,64 @@ class SimpleVBAExtractor:
             if not stream:
                 self.root.after(0, self.display_result, "⚠ Поток PROJECT не найден. Возможно, проект не защищён.")
                 ole.close()
+                self.root.after(0, self.stop_progress)
                 return
 
             data = ole.openstream(stream).read()
             ole.close()
             text = data.decode('latin-1', errors='ignore')
 
-            # Поиск всех полей защиты
             dpb = re.search(r'(?:DPB|DPx)="([A-Fa-f0-9]+)"', text)
             cmg = re.search(r'CMG="([A-Fa-f0-9]+)"', text)
             gc  = re.search(r'GC="([A-Fa-f0-9]+)"', text)
             wid = re.search(r'ID="([A-Fa-f0-9]+)"', text)
             wep = re.search(r'WEP="([A-Fa-f0-9]+)"', text)
 
-            # 🔹 СТАРЫЙ ФОРМАТ
             if path.lower().endswith('.xls') and dpb:
                 h = f"$oldoffice$0*{dpb.group(1)}"
                 hashes["old"] = h
-
                 result.append("🔐 СТАРЫЙ ФОРМАТ (Office 97–2010)\n")
                 result.append("-"*40 + "\n")
-                result.append("Хэш:\n")
-                result.append(f"  {h}\n\n")
-
+                result.append(f"Хэш:\n  {h}\n\n")
                 result.append("Использование с hashcat:\n")
                 result.append("  Режим: -m 9700\n")
-                result.append("  Словарь:\n")
                 result.append("  hashcat -m 9700 -a 0 hash.txt rockyou.txt\n\n")
-
                 result.append("  Маска (6 символов):\n")
                 result.append("  hashcat -m 9700 -a 3 hash.txt ?a?a?a?a?a?a\n\n")
 
-            # 🔹 НОВЫЙ ФОРМАТ
             elif cmg and dpb and gc:
                 h = f"$vba$*{cmg.group(1)}*{dpb.group(1)}*{gc.group(1)}"
                 hashes["new"] = h
-
                 result.append("🔐 НОВЫЙ ФОРМАТ (Office 2013–2024)\n")
                 result.append("-"*40 + "\n")
-                result.append("Хэш:\n")
-                result.append(f"  {h}\n\n")
-
+                result.append(f"Хэш:\n  {h}\n\n")
                 result.append("Обнаруженные поля:\n")
                 if cmg: result.append(f"  CMG : {cmg.group(1)}\n")
                 if dpb: result.append(f"  DPB : {dpb.group(1)}\n")
                 if gc:  result.append(f"  GC  : {gc.group(1)}\n")
                 if wid: result.append(f"  ID  : {wid.group(1)}\n")
                 if wep: result.append(f"  WEP : {wep.group(1)}\n")
-
-                result.append("\n")
-
-                result.append("Использование с hashcat:\n")
-                result.append("  Обычно используется John the Ripper / office2john\n")
-                result.append("  либо кастомные VBA-модули.\n\n")
-
+                result.append("\nЧто означает каждый параметр:\n")
+                result.append("  CMG — encrypted state\n")
+                result.append("  DPB — password verifier\n")
+                result.append("  GC  — project constants\n")
+                result.append("  ID  — project identifier\n")
+                result.append("  WEP — encryption flags\n")
+                result.append("\nИспользование с hashcat:\n")
+                result.append("  Режим: -m 29500 (VBA)\n")
+                result.append("  John the Ripper (office2john) также поддерживает этот формат.\n\n")
                 result.append("Пример:\n")
                 result.append("  office2john.py file.xlsm > hash.txt\n")
-                result.append("  hashcat hash.txt wordlist.txt\n\n")
+                result.append("  hashcat -m 29500 hash.txt wordlist.txt\n\n")
 
-            # ⚠ Частичный новый формат
             elif dpb:
                 h = f"$partial$*{dpb.group(1)}"
                 hashes["new"] = h
-
                 result.append("⚠ ЧАСТИЧНЫЙ НОВЫЙ ФОРМАТ\n")
                 result.append("-"*40 + "\n")
                 result.append(f"{h}\n\n")
-
                 result.append("Найдены не все поля защиты VBA-проекта.\n")
-                result.append("Для полного modern hash обычно нужны:\n")
-                result.append("  CMG + DPB + GC\n\n")
+                result.append("Для полного modern hash обычно нужны: CMG + DPB + GC\n\n")
 
             if not hashes["old"] and not hashes["new"] and not hashes.get("partial"):
                 result.append("Не найдено полей защиты (DPB, CMG, GC, ID, WEP).\n")
@@ -554,6 +663,7 @@ class SimpleVBAExtractor:
                 except: pass
             self.root.after(0, self.display_result, "".join(result))
             self.root.after(0, self._enable_hash_buttons)
+            self.root.after(0, self.stop_progress)
 
     def _enable_hash_buttons(self):
         self.w["btn_extract_hash"].config(state=tk.NORMAL, text="Извлечь хэш пароля")
@@ -562,16 +672,16 @@ class SimpleVBAExtractor:
             self.w["btn_copy_hash"].pack(side=tk.LEFT, padx=3)
             self.w["btn_copy_hash"].config(bg=self.colors["accent_orange"], fg="white")
             self.w["btn_copy_hash"].config(state=tk.NORMAL)
-            self.hash_displayed = True   # показываем, что сейчас вывод хэша
+            self.hash_displayed = True
         else:
             self.hash_displayed = False
 
     def display_result(self, text):
         self.w["output_text"].insert(tk.END, text)
         self.w["output_text"].see("1.0")
-        self.highlight_comments()
+        self.apply_syntax_highlighting()
 
-    # ================== Копирование хэша ==================
+    # ================== Копирование / сохранение ==================
     def copy_hash_only(self):
         if not self.last_hash_value:
             messagebox.showwarning("Нет хэша", "Сначала извлеките хэш пароля", parent=self.root)
@@ -581,7 +691,6 @@ class SimpleVBAExtractor:
         self.root.update()
         messagebox.showinfo("Скопировано", "Хэш скопирован в буфер обмена.", parent=self.root)
 
-    # ================== Копирование модулей (и хэша) ==================
     def copy_current_module(self):
         if 0 <= self.current_module < len(self.modules):
             code = self.modules[self.current_module][1]
@@ -593,7 +702,6 @@ class SimpleVBAExtractor:
             messagebox.showwarning("Нет модуля", "Выберите модуль в списке.", parent=self.root)
 
     def copy_all(self):
-        # Если сейчас показана информация о хэше – копируем весь вывод
         if self.hash_displayed:
             content = self.w["output_text"].get("1.0", tk.END).strip()
             if not content:
@@ -602,10 +710,8 @@ class SimpleVBAExtractor:
             self.root.clipboard_clear()
             self.root.clipboard_append(content)
             self.root.update()
-            messagebox.showinfo("Скопировано", "Информация о хэшах скопирована в буфер обмена.", parent=self.root)
+            messagebox.showinfo("Скопировано", "Информация о хэшах скопирована.", parent=self.root)
             return
-
-        # Иначе копируем все модули (прежнее поведение)
         if not self.modules:
             messagebox.showwarning("Пусто", "Нет модулей для копирования.", parent=self.root)
             return
@@ -616,7 +722,6 @@ class SimpleVBAExtractor:
         self.root.update()
         messagebox.showinfo("Скопировано", "Все модули скопированы.", parent=self.root)
 
-    # ================== Сохранение ==================
     def save_current_module(self):
         if 0 <= self.current_module < len(self.modules):
             name, code = self.modules[self.current_module]
@@ -634,18 +739,44 @@ class SimpleVBAExtractor:
                 except Exception as e: messagebox.showerror("Ошибка", f"Не удалось сохранить: {e}", parent=self.root)
         else: messagebox.showwarning("Нет модуля", "Выберите модуль.", parent=self.root)
 
-    def save_all_modules(self):
+    def save_all_to_zip(self):
         if not self.modules:
             messagebox.showwarning("Пусто", "Нет модулей для сохранения.", parent=self.root)
             return
-        dir_path = filedialog.askdirectory(title="Папка для сохранения")
-        if dir_path:
-            try:
+        zip_path = filedialog.asksaveasfilename(
+            defaultextension=".zip",
+            filetypes=[("ZIP archive", "*.zip"), ("All files", "*.*")],
+            initialfile="VBA_Modules.zip",
+            title="Сохранить все модули в ZIP"
+        )
+        if not zip_path:
+            return
+        try:
+            with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
                 for name, code in self.modules:
-                    safe = name.replace(".", "_") + ".bas"
-                    with open(os.path.join(dir_path, safe), "w", encoding="utf-8") as f: f.write(code)
-                messagebox.showinfo("Сохранено", f"Все модули сохранены в:\n{dir_path}", parent=self.root)
-            except Exception as e: messagebox.showerror("Ошибка", f"Ошибка сохранения: {e}", parent=self.root)
+                    safe_name = name.replace(".", "_") + ".bas"
+                    zf.writestr(safe_name, code)
+            messagebox.showinfo("Сохранено", f"Все модули сохранены в ZIP:\n{zip_path}", parent=self.root)
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Не удалось сохранить ZIP: {e}", parent=self.root)
+
+    def open_current_in_txt(self):
+        text = self.w["output_text"].get("1.0", tk.END).strip()
+        if not text:
+            messagebox.showwarning("Пусто", "Нет данных для открытия.", parent=self.root)
+            return
+        try:
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8') as tmp:
+                tmp.write(text)
+                tmp_path = tmp.name
+            if platform.system() == 'Windows':
+                os.startfile(tmp_path)
+            elif platform.system() == 'Darwin':
+                subprocess.Popen(['open', tmp_path])
+            else:
+                subprocess.Popen(['xdg-open', tmp_path])
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Не удалось открыть файл: {e}", parent=self.root)
 
     # ================== Очистка ==================
     def clear_output(self):
