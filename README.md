@@ -103,8 +103,8 @@ In 2002, Carlos Rondão, a Portuguese programmer and professor at the Lisbon Sch
 Carlos is no longer alive.
 
 I stumbled upon this file and wanted to see how he did it. The standard editor, of course, asked for a password. That was the impetus for writing the app.
----
 
+---
 ## Русский
 
 ### Что это?
