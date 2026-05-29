@@ -96,6 +96,14 @@ This tool is intended for analyzing files you own or have explicit permission to
 ---
 
 ---
+### Afterword
+
+In 2002, Carlos Rondão, a Portuguese programmer and professor at the Lisbon School of Business and Economics, wrote Tetris directly in Excel—in pure VBA, without any external libraries. And, as often happens with people who truly love their work, he password-protected the project—not out of spite, perhaps, just for the hell of it.
+
+Carlos is no longer alive.
+
+I stumbled upon this file and wanted to see how he did it. The standard editor, of course, asked for a password. That was the impetus for writing the app.
+---
 
 ## Русский
 
