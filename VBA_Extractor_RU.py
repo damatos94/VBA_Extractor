@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import filedialog, messagebox, scrolledtext, ttk
+from tkinter import filedialog, messagebox, ttk
 import threading
 import os
 import re
@@ -7,6 +7,7 @@ import zipfile
 import tempfile
 import subprocess
 import platform
+import shutil
 
 try:
     from oletools.olevba import VBA_Parser
@@ -33,268 +34,317 @@ def clean_vba_code(raw_code):
     return result if result else None
 
 
-# =============================================================================
-# [ЗАКОММЕНТИРОВАНО: Временное отключение нумерации строк]
-# =============================================================================
-# class LineNumberedText(tk.Frame):
-#     """Виджет с нумерацией строк, где разделители не нумеруются."""
-#     def __init__(self, master, theme_colors=None, **kwargs):
-#         super().__init__(master)
-#         self.theme_colors = theme_colors or {}
-#         self.text_frame = tk.Frame(self)
-#         self.text_frame.pack(fill=tk.BOTH, expand=True)
-# 
-#         self.line_numbers = tk.Text(self.text_frame, width=4, padx=2, takefocus=0,
-#                                     wrap=tk.NONE, state=tk.DISABLED, border=0,
-#                                     highlightthickness=0)
-#         self.line_numbers.pack(side=tk.LEFT, fill=tk.Y)
-# 
-#         self.scrollbar = tk.Scrollbar(self.text_frame, orient=tk.VERTICAL)
-#         self.scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-# 
-#         self.text = tk.Text(self.text_frame, wrap=tk.WORD, yscrollcommand=self._on_text_scroll,
-#                             font=("Consolas", 10), border=0, highlightthickness=0, **kwargs)
-#         self.text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-# 
-#         self.scrollbar.config(command=self._on_scrollbar)
-#         self.text.config(yscrollcommand=self._on_text_scroll)
-# 
-#         self.text.bind("<MouseWheel>", self._on_mousewheel)
-#         self.text.bind("<Button-4>", self._on_mousewheel)
-#         self.text.bind("<Button-5>", self._on_mousewheel)
-#         self.text.bind("<Configure>", self._update_line_numbers)
-#         self.text.bind("<<Modified>>", self._on_content_modified)
-# 
-#         self.line_mapping = []
-#         self._update_line_numbers()
-# 
-#     def _on_text_scroll(self, *args):
-#         self.scrollbar.set(*args)
-#         self._update_line_numbers()
-# 
-#     def _on_scrollbar(self, *args):
-#         self.text.yview(*args)
-#         self._update_line_numbers()
-# 
-#     def _on_mousewheel(self, event):
-#         self.text.yview_scroll(int(-1*(event.delta/120)), "units")
-#         self._update_line_numbers()
-#         return "break"
-# 
-#     def _on_content_modified(self, event=None):
-#         if self.text.edit_modified():
-#             self._rebuild_line_mapping()
-#             self._update_line_numbers()
-#             self.text.edit_modified(False)
-# 
-#     def _rebuild_line_mapping(self):
-#         content = self.text.get("1.0", "end-1c")
-#         lines = content.splitlines()
-#         self.line_mapping = []
-#         original_line = 0
-#         for line in lines:
-#             stripped = line.strip()
-#             if stripped and all(c == '─' for c in stripped):
-#                 self.line_mapping.append(None)
-#             else:
-#                 original_line += 1
-#                 self.line_mapping.append(original_line)
-# 
-#     def _update_line_numbers(self, event=None):
-#         self.line_numbers.config(state=tk.NORMAL)
-#         self.line_numbers.delete(1.0, tk.END)
-#         line_count = len(self.line_mapping)
-#         if line_count == 0:
-#             self.line_numbers.config(state=tk.DISABLED)
-#             return
-#         max_original = max((num for num in self.line_mapping if num is not None), default=0)
-#         width = max(2, len(str(max_original)) + 1)
-#         self.line_numbers.config(width=width)
-#         numbers_lines = []
-#         for orig_num in self.line_mapping:
-#             if orig_num is None:
-#                 numbers_lines.append(" " * (width-1))
-#             else:
-#                 numbers_lines.append(str(orig_num).rjust(width-1))
-#         numbers_text = "\n".join(numbers_lines)
-#         self.line_numbers.insert(1.0, numbers_text)
-#         self.line_numbers.config(state=tk.DISABLED)
-#         self.line_numbers.yview_moveto(self.text.yview()[0])
-# 
-#     def insert_with_mapping(self, index, text, *args):
-#         self.text.insert(index, text, *args)
-#         self._rebuild_line_mapping()
-#         self._update_line_numbers()
-# 
-#     def delete(self, start, end=None):
-#         self.text.delete(start, end)
-#         self._rebuild_line_mapping()
-#         self._update_line_numbers()
-# 
-#     def get(self, start, end=None):
-#         return self.text.get(start, end)
-# 
-#     def see(self, index):
-#         self.text.see(index)
-# 
-#     def see_original_line(self, original_line_num):
-#         for vis_idx, orig in enumerate(self.line_mapping, start=1):
-#             if orig == original_line_num:
-#                 self.text.see(f"{vis_idx}.0")
-#                 return
-# 
-#     def tag_configure(self, tag, **kwargs):
-#         self.text.tag_configure(tag, **kwargs)
-# 
-#     def tag_add(self, tag, start, end=None):
-#         self.text.tag_add(tag, start, end)
-# 
-#     def tag_remove(self, tag, start, end=None):
-#         self.text.tag_remove(tag, start, end)
-# 
-#     def tag_raise(self, tag):
-#         self.text.tag_raise(tag)
-# 
-#     def bind(self, sequence, func, add=None):
-#         self.text.bind(sequence, func, add)
-# 
-#     def mark_set(self, name, index):
-#         self.text.mark_set(name, index)
-# 
-#     def yview(self, *args):
-#         return self.text.yview(*args)
-# 
-#     def configure(self, **kwargs):
-#         self.text.configure(**kwargs)
-# 
-#     def config(self, **kwargs):
-#         self.text.config(**kwargs)
-# 
-#     def apply_theme(self, colors):
-#         self.theme_colors = colors
-#         self.text.configure(bg=colors["bg_main"], fg=colors["fg_text"],
-#                             insertbackground=colors["fg_text"],
-#                             selectbackground=colors["selection"],
-#                             selectforeground="white")
-#         self.line_numbers.configure(bg=colors["bg_main"], fg=colors["separator"],
-#                                     selectbackground=colors["bg_main"])
-# =============================================================================
+class LineNumberedText(tk.Frame):
+    """
+    Виджет с нумерацией строк на Canvas.
+    Использует dlineinfo для пиксель-в-пиксель позиционирования.
+    Разделители (─────) пропускаются.
+    Поддерживает горизонтальную прокрутку при wrap='none'.
+    """
+    def __init__(self, master, theme_colors=None, **kwargs):
+        super().__init__(master)
+        self.theme_colors = theme_colors or {}
+        self.line_mapping = []          # [code_line_num | None] по виджет-строкам (0-based)
+        self._fg_color = "#555555"
+        self._bg_color = "#1e1e1e"
+        self.show_line_numbers = True   # флаг показа номеров строк
+        self.wrap_mode = kwargs.pop('wrap', 'word')
+
+        self.text_frame = tk.Frame(self)
+        self.text_frame.pack(fill=tk.BOTH, expand=True)
+
+        # Canvas для номеров
+        self.canvas = tk.Canvas(
+            self.text_frame, width=40, bd=0,
+            highlightthickness=0, takefocus=0
+        )
+        self.canvas.pack(side=tk.LEFT, fill=tk.Y)
+
+        # Вертикальный скроллбар
+        self.v_scrollbar = tk.Scrollbar(self.text_frame, orient=tk.VERTICAL)
+        self.v_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        # Горизонтальный скроллбар (появляется только при wrap='none')
+        self.h_scrollbar = tk.Scrollbar(self, orient=tk.HORIZONTAL)
+        # Пока скрыт, будет упакован при необходимости
+
+        self.text = tk.Text(
+            self.text_frame, wrap=self.wrap_mode,
+            yscrollcommand=self._on_text_scroll,
+            xscrollcommand=self._on_text_xscroll,
+            font=("Consolas", 10), border=0, highlightthickness=0,
+            padx=8, pady=6, **kwargs
+        )
+        self.text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        self.v_scrollbar.config(command=self._on_scrollbar)
+        self.h_scrollbar.config(command=self._on_hscrollbar)
+
+        self.text.bind("<MouseWheel>", self._on_mousewheel)
+        self.text.bind("<Button-4>",   self._on_mousewheel)
+        self.text.bind("<Button-5>",   self._on_mousewheel)
+        self.text.bind("<Configure>",  self._update_line_numbers)
+
+        if self.wrap_mode == 'none':
+            self.h_scrollbar.pack(side=tk.BOTTOM, fill=tk.X)
+
+    # ---- Скролл ----
+    def _on_text_scroll(self, *args):
+        self.v_scrollbar.set(*args)
+        self._redraw_line_numbers()
+
+    def _on_text_xscroll(self, *args):
+        self.h_scrollbar.set(*args)
+
+    def _on_scrollbar(self, *args):
+        self.text.yview(*args)
+        self._redraw_line_numbers()
+
+    def _on_hscrollbar(self, *args):
+        self.text.xview(*args)
+
+    def _on_mousewheel(self, event):
+        if event.num == 4:
+            self.text.yview_scroll(-1, "units")
+        elif event.num == 5:
+            self.text.yview_scroll(1, "units")
+        else:
+            self.text.yview_scroll(int(-1*(event.delta/120)), "units")
+        self._redraw_line_numbers()
+        return "break"
+
+    def configure_wrap(self, mode):
+        """Переключает режим переноса и управляет горизонтальным скроллбаром."""
+        if mode == self.wrap_mode:
+            return
+        self.wrap_mode = mode
+        self.text.configure(wrap=mode)
+        if mode == 'none':
+            if not self.h_scrollbar.winfo_ismapped():
+                self.h_scrollbar.pack(side=tk.BOTTOM, fill=tk.X)
+        else:
+            self.h_scrollbar.pack_forget()
+        self._update_line_numbers()
+
+    # ---- Управление номерами строк ----
+    def enable_line_numbers(self, enable):
+        self.show_line_numbers = enable
+        self._update_line_numbers()
+
+    # ---- Карта строк ----
+    def _rebuild_line_mapping(self):
+        if not self.show_line_numbers:
+            self.line_mapping = []
+            return
+
+        content = self.text.get("1.0", "end-1c")
+        self.line_mapping = []
+        code_line = 0
+        for line in content.splitlines():
+            stripped = line.strip()
+            if stripped and all(c == "─" for c in stripped):
+                self.line_mapping.append(None)
+            else:
+                code_line += 1
+                self.line_mapping.append(code_line)
+
+    # ---- Отрисовка номеров ----
+    def _redraw_line_numbers(self, event=None):
+        self.canvas.delete("all")
+        if not self.show_line_numbers:
+            return
+
+        # Страховка: если карта расходится с количеством строк, перестроить
+        try:
+            real_lines = int(self.text.index('end-1c').split('.')[0])
+        except:
+            real_lines = 0
+        if not self.line_mapping or len(self.line_mapping) != real_lines:
+            self._rebuild_line_mapping()
+
+        if not self.line_mapping:
+            return
+
+        max_num = max((n for n in self.line_mapping if n is not None), default=0)
+        digits = max(2, len(str(max_num)))
+        width = digits * 7 + 14
+        self.canvas.config(width=width)
+
+        idx = self.text.index("@0,0")
+        while True:
+            dline = self.text.dlineinfo(idx)
+            if dline is None:
+                break
+            y = dline[1]
+            linenum = int(str(idx).split(".")[0])
+
+            if 0 < linenum <= len(self.line_mapping):
+                code_num = self.line_mapping[linenum - 1]
+                if code_num is not None:
+                    self.canvas.create_text(
+                        width - 6, y,
+                        anchor="ne",
+                        text=str(code_num),
+                        font=("Consolas", 10),
+                        fill=self._fg_color
+                    )
+
+            nxt = self.text.index(f"{idx}+1line")
+            if nxt == idx:
+                break
+            idx = nxt
+
+    def _update_line_numbers(self, event=None):
+        self._rebuild_line_mapping()
+        self._redraw_line_numbers()
+
+    def get_code_to_widget_map(self):
+        result = {}
+        for w_idx, c_num in enumerate(self.line_mapping, start=1):
+            if c_num is not None and c_num not in result:
+                result[c_num] = w_idx
+        return result
+
+    # ---- Прокси-методы к self.text ----
+    def insert(self, index, text, *args):
+        self.text.insert(index, text, *args)
+        self._update_line_numbers()
+
+    def delete(self, start, end=None):
+        if end:
+            self.text.delete(start, end)
+        else:
+            self.text.delete(start)
+        self._update_line_numbers()
+
+    def get(self, start, end=None):
+        return self.text.get(start, end) if end else self.text.get(start)
+
+    def see(self, index):
+        self.text.see(index)
+        self._redraw_line_numbers()
+
+    def see_code_line(self, code_line_num):
+        for w_idx, orig in enumerate(self.line_mapping, start=1):
+            if orig == code_line_num:
+                self.text.see(f"{w_idx}.0")
+                self._redraw_line_numbers()
+                return
+
+    def tag_configure(self, tag, **kwargs): self.text.tag_configure(tag, **kwargs)
+    def tag_add(self, tag, start, end=None):
+        if end:
+            self.text.tag_add(tag, start, end)
+        else:
+            self.text.tag_add(tag, start)
+    def tag_remove(self, tag, start, end=None):
+        if end:
+            self.text.tag_remove(tag, start, end)
+        else:
+            self.text.tag_remove(tag, start)
+    def tag_raise(self, tag):    self.text.tag_raise(tag)
+    def mark_set(self, n, i):    self.text.mark_set(n, i)
+    def edit_modified(self, v=None):
+        return self.text.edit_modified(v) if v is None else self.text.edit_modified(v)
+    def yview(self, *a):         return self.text.yview(*a)
+    def configure(self, **kw):   self.text.configure(**kw)
+    def config(self, **kw):      self.text.config(**kw)
+
+    def bind(self, seq=None, func=None, add=None):
+        if seq is None:  return self.text.bind()
+        if func is None: return self.text.bind(seq)
+        return self.text.bind(seq, func, add)
+
+    def apply_theme(self, colors):
+        self.theme_colors = colors
+        self._fg_color = colors["separator"]
+        self._bg_color = colors["bg_main"]
+        self.canvas.configure(bg=colors["bg_main"])
+        self.configure(
+            bg=colors["bg_main"],
+            fg=colors["fg_text"],
+            insertbackground=colors["fg_text"],
+            selectbackground=colors["selection"],
+            selectforeground="white",
+        )
+        self._redraw_line_numbers()
 
 
 class SimpleVBAExtractor:
     THEMES = {
         "dark": {
-            "bg_main": "#1e1e1e",
-            "bg_panel": "#252526",
-            "bg_input": "#3c3c3c",
-            "fg_text": "#d4d4d4",
-            "fg_comment": "#6a9955",
-            "keyword": "#569cd6",
-            "string": "#ce9178",
-            "number": "#b5cea8",
-            "builtin": "#dcdcaa",
-            "type": "#4ec9b0",
-            "operator": "#d4d4d4",
-            "separator": "#555555",
-            "accent_green": "#4e9a06",
-            "accent_blue": "#3584e4",
-            "accent_orange": "#cd9309",
-            "accent_red": "#c01c28",
-            "border": "#3e3e42",
-            "btn_bg": "#3e3e42",
-            "btn_fg": "#ffffff",
-            "btn_active": "#505055",
-            "selection": "#3584e4",
+            "bg_main": "#1e1e1e", "bg_panel": "#252526", "bg_input": "#3c3c3c",
+            "fg_text": "#d4d4d4", "fg_comment": "#6a9955", "keyword": "#569cd6",
+            "string": "#ce9178", "number": "#b5cea8", "builtin": "#dcdcaa",
+            "type": "#4ec9b0", "operator": "#d4d4d4", "separator": "#555555",
+            "accent_green": "#4e9a06", "accent_blue": "#3584e4",
+            "accent_orange": "#cd9309", "accent_red": "#c01c28",
+            "border": "#3e3e42", "btn_bg": "#3e3e42", "btn_fg": "#ffffff",
+            "btn_active": "#505055", "selection": "#3584e4",
         },
         "light": {
-            "bg_main": "#ffffff",
-            "bg_panel": "#f5f5f5",
-            "bg_input": "#ffffff",
-            "fg_text": "#1a1a1a",
-            "fg_comment": "#008000",
-            "keyword": "#0000ff",
-            "string": "#a31515",
-            "number": "#098658",
-            "builtin": "#795e26",
-            "type": "#267f99",
-            "operator": "#1a1a1a",
-            "separator": "#cccccc",
-            "accent_green": "#2e7d32",
-            "accent_blue": "#1976d2",
-            "accent_orange": "#ed6c02",
-            "accent_red": "#d32f2f",
-            "border": "#cccccc",
-            "btn_bg": "#e8e8e8",
-            "btn_fg": "#1a1a1a",
-            "btn_active": "#d0d0d0",
-            "selection": "#1976d2",
+            "bg_main": "#ffffff", "bg_panel": "#f5f5f5", "bg_input": "#ffffff",
+            "fg_text": "#1a1a1a", "fg_comment": "#008000", "keyword": "#0000ff",
+            "string": "#a31515", "number": "#098658", "builtin": "#795e26",
+            "type": "#267f99", "operator": "#1a1a1a", "separator": "#cccccc",
+            "accent_green": "#2e7d32", "accent_blue": "#1976d2",
+            "accent_orange": "#ed6c02", "accent_red": "#d32f2f",
+            "border": "#cccccc", "btn_bg": "#e8e8e8", "btn_fg": "#1a1a1a",
+            "btn_active": "#d0d0d0", "selection": "#1976d2",
         }
     }
 
     VBA_KEYWORDS = [
-        "As", "Binary", "ByRef", "ByVal", "Date", "Else", "Empty", "Error", "False", "For",
-        "Friend", "Get", "Input", "Is", "Len", "Let", "Lock", "Me", "Mid", "New", "Next",
-        "Nothing", "Null", "On", "Option", "Optional", "ParamArray", "Print", "Private",
-        "Property", "Public", "Resume", "Seek", "Set", "Static", "Step", "String", "Then",
-        "Time", "To", "True", "WithEvents", "And", "Eqv", "Imp", "Not", "Or", "Xor",
-        "Call", "Case", "Close", "Const", "Declare", "Dim", "Do", "Each", "ElseIf", "End",
-        "Enum", "Erase", "Event", "Exit", "Function", "GoSub", "GoTo", "If", "Implements",
-        "In", "Loop", "LSet", "Open", "Preserve", "RaiseEvent", "ReDim", "Rem", "Return",
-        "RSet", "Select", "Stop", "Sub", "Type", "Unlock", "Wend", "While", "With",
-        "Write", "Attribute", "Global"
+        "As","Binary","ByRef","ByVal","Date","Else","Empty","Error","False","For",
+        "Friend","Get","Input","Is","Len","Let","Lock","Me","Mid","New","Next",
+        "Nothing","Null","On","Option","Optional","ParamArray","Print","Private",
+        "Property","Public","Resume","Seek","Set","Static","Step","String","Then",
+        "Time","To","True","WithEvents","And","Eqv","Imp","Not","Or","Xor",
+        "Call","Case","Close","Const","Declare","Dim","Do","Each","ElseIf","End",
+        "Enum","Erase","Event","Exit","Function","GoSub","GoTo","If","Implements",
+        "In","Loop","LSet","Open","Preserve","RaiseEvent","ReDim","Rem","Return",
+        "RSet","Select","Stop","Sub","Type","Unlock","Wend","While","With",
+        "Write","Attribute","Global"
     ]
     VBA_BUILTIN_FUNCS = [
-        "Abs", "Array", "Asc", "Atn", "CBool", "CByte", "CCur", "CDate", "CDbl", "CInt",
-        "CLng", "CSng", "CStr", "CVar", "Choose", "Chr", "Command", "Cos", "CreateObject",
-        "CurDir", "Date", "DateAdd", "DateDiff", "DatePart", "DateSerial", "DateValue",
-        "Day", "DDB", "Dir", "DoEvents", "Environ", "EOF", "Error", "Exp", "FileAttr",
-        "FileDateTime", "FileLen", "Filter", "Format", "FormatCurrency", "FormatDateTime",
-        "FormatNumber", "FormatPercent", "FreeFile", "FV", "GetAllSettings", "GetAttr",
-        "GetObject", "GetSetting", "Hex", "Hour", "IIf", "InputBox", "InStr", "InStrRev",
-        "Int", "IPmt", "IRR", "IsArray", "IsDate", "IsEmpty", "IsError", "IsMissing",
-        "IsNull", "IsNumeric", "IsObject", "Join", "LBound", "LCase", "Left", "Len",
-        "Loc", "LOF", "Log", "LTrim", "Mid", "Minute", "MIRR", "Month", "MonthName",
-        "MsgBox", "Now", "NPer", "NPV", "Oct", "Partition", "Pmt", "PPmt", "PV", "QBColor",
-        "Rate", "Replace", "RGB", "Right", "Rnd", "Round", "RTrim", "Second", "Seek",
-        "Sgn", "Shell", "Sin", "SLN", "Space", "Spc", "Split", "Sqr", "Str", "StrComp",
-        "StrConv", "String", "StrReverse", "Switch", "SYD", "Tab", "Tan", "Time",
-        "Timer", "TimeSerial", "TimeValue", "Trim", "TypeName", "UBound", "UCase", "Val",
-        "VarType", "Weekday", "WeekdayName", "Year", "Execute", "Eval"
+        "Abs","Array","Asc","Atn","CBool","CByte","CCur","CDate","CDbl","CInt",
+        "CLng","CSng","CStr","CVar","Choose","Chr","Command","Cos","CreateObject",
+        "CurDir","Date","DateAdd","DateDiff","DatePart","DateSerial","DateValue",
+        "Day","DDB","Dir","DoEvents","Environ","EOF","Error","Exp","FileAttr",
+        "FileDateTime","FileLen","Filter","Format","FormatCurrency","FormatDateTime",
+        "FormatNumber","FormatPercent","FreeFile","FV","GetAllSettings","GetAttr",
+        "GetObject","GetSetting","Hex","Hour","IIf","InputBox","InStr","InStrRev",
+        "Int","IPmt","IRR","IsArray","IsDate","IsEmpty","IsError","IsMissing",
+        "IsNull","IsNumeric","IsObject","Join","LBound","LCase","Left","Len",
+        "Loc","LOF","Log","LTrim","Mid","Minute","MIRR","Month","MonthName",
+        "MsgBox","Now","NPer","NPV","Oct","Partition","Pmt","PPmt","PV","QBColor",
+        "Rate","Replace","RGB","Right","Rnd","Round","RTrim","Second","Seek",
+        "Sgn","Shell","Sin","SLN","Space","Spc","Split","Sqr","Str","StrComp",
+        "StrConv","String","StrReverse","Switch","SYD","Tab","Tan","Time",
+        "Timer","TimeSerial","TimeValue","Trim","TypeName","UBound","UCase","Val",
+        "VarType","Weekday","WeekdayName","Year","Execute","Eval"
     ]
     VBA_TYPES = [
-        "Boolean", "Byte", "Currency", "Date", "Decimal", "Double", "Integer", "Long",
-        "LongLong", "Object", "Single", "String", "Variant"
+        "Boolean","Byte","Currency","Date","Decimal","Double","Integer","Long",
+        "LongLong","Object","Single","String","Variant"
     ]
 
-    # Сигнатуры с пояснениями
     SUSPICIOUS_PATTERNS = {
         "high": {
             "description": "Высокая опасность",
             "patterns": [
-                {"regex": r"CreateObject\s*\(\s*[\"']Shell\.Application[\"']\s*\)",
-                 "explanation": "Запуск произвольных программ через Shell.Application"},
-                {"regex": r"CreateObject\s*\(\s*[\"']WScript\.Shell[\"']\s*\)",
-                 "explanation": "Создание WScript.Shell для выполнения команд ОС"},
-                {"regex": r"CreateObject\s*\(\s*[\"']MSXML2\.XMLHTTP[\"']\s*\)",
-                 "explanation": "Загрузка данных из сети через MSXML2.XMLHTTP"},
-                {"regex": r"\.Download\s+[\"']?http",
-                 "explanation": "Скачивание файла по HTTP (возможно, загрузка вредоносного ПО)"},
-                {"regex": r"URLDownloadToFile",
-                 "explanation": "API-вызов URLDownloadToFile для скачивания файла"},
-                {"regex": r"ShellExecute",
-                 "explanation": "Выполнение файла через ShellExecute"},
-                {"regex": r"RegWrite\s+[\"']HKEY_",
-                 "explanation": "Запись в реестр (возможно, для автозагрузки)"},
-                {"regex": r"Binary\.Write",
-                 "explanation": "Запись бинарных данных (потенциально – сохранение исполняемого файла)"},
-                {"regex": r"ADODB\.Stream",
-                 "explanation": "Работа с ADODB.Stream для загрузки/сохранения файлов"},
-                {"regex": r"SaveAs\s+.*\.exe",
-                 "explanation": "Сохранение файла с расширением .exe"},
-                {"regex": r"Run\s*\(\s*[\"'].*\.exe",
-                 "explanation": "Запуск .exe файла"},
-                {"regex": r"Exec\s*\(\s*[\"']",
-                 "explanation": "Выполнение команды через WScript.Shell.Exec"},
+                {"regex": r"CreateObject\s*\(\s*[\"']Shell\.Application[\"']\s*\)", "explanation": "Запуск произвольных программ через Shell.Application"},
+                {"regex": r"CreateObject\s*\(\s*[\"']WScript\.Shell[\"']\s*\)", "explanation": "Создание WScript.Shell для выполнения команд ОС"},
+                {"regex": r"CreateObject\s*\(\s*[\"']MSXML2\.XMLHTTP[\"']\s*\)", "explanation": "Загрузка данных из сети через MSXML2.XMLHTTP"},
+                {"regex": r"\.Download\s+[\"']?http", "explanation": "Скачивание файла по HTTP"},
+                {"regex": r"URLDownloadToFile", "explanation": "API-вызов URLDownloadToFile для скачивания файла"},
+                {"regex": r"ShellExecute", "explanation": "Выполнение файла через ShellExecute"},
+                {"regex": r"RegWrite\s+[\"']HKEY_", "explanation": "Запись в реестр (возможно, для автозагрузки)"},
+                {"regex": r"Binary\.Write", "explanation": "Запись бинарных данных"},
+                {"regex": r"ADODB\.Stream", "explanation": "Работа с ADODB.Stream для загрузки/сохранения файлов"},
+                {"regex": r"SaveAs\s+.*\.exe", "explanation": "Сохранение файла с расширением .exe"},
+                {"regex": r"Run\s*\(\s*[\"'].*\.exe", "explanation": "Запуск .exe файла"},
+                {"regex": r"Exec\s*\(\s*[\"']", "explanation": "Выполнение команды через WScript.Shell.Exec"},
             ]
         },
         "medium": {
@@ -306,18 +356,18 @@ class SimpleVBAExtractor:
                 {"regex": r"\bAutoExec\b", "explanation": "Автозапуск макроса (старое имя)"},
                 {"regex": r"\bAuto_Open\b", "explanation": "Автоматический запуск при открытии файла (Excel 4.0)"},
                 {"regex": r"Shell\s*\(", "explanation": "Вызов внешней программы через Shell"},
-                {"regex": r"Kill\s+[\"'].*\.\*", "explanation": "Удаление файлов с расширением .exe (сокрытие следов)"},
+                {"regex": r"Kill\s+[\"'].*\.\*", "explanation": "Удаление файлов с расширением .exe"},
                 {"regex": r"FileSystemObject", "explanation": "Работа с файловой системой через FSO"},
-                {"regex": r"CreateTextFile", "explanation": "Создание текстового файла (возможно, для дропа скриптов)"},
+                {"regex": r"CreateTextFile", "explanation": "Создание текстового файла"},
                 {"regex": r"Open\s+[\"'].*\.exe", "explanation": "Открытие/создание .exe файла"},
-                {"regex": r"Environ\s*\(", "explanation": "Чтение переменных окружения (может использоваться для обхода песочницы)"},
+                {"regex": r"Environ\s*\(", "explanation": "Чтение переменных окружения"},
                 {"regex": r"WScript\.Shell", "explanation": "Ссылка на WScript.Shell без CreateObject"},
-                {"regex": r"SendKeys", "explanation": "Эмуляция нажатий клавиш (потенциально опасное действие)"},
-                {"regex": r"Call\s+.*\.(exe|bat|cmd)", "explanation": "Вызов процедуры с расширением, похожим на исполняемый файл"},
+                {"regex": r"SendKeys", "explanation": "Эмуляция нажатий клавиш"},
+                {"regex": r"Call\s+.*\.(exe|bat|cmd)", "explanation": "Вызов процедуры с расширением исполняемого файла"},
             ]
         },
         "low": {
-            "description": "Низкая опасность (обфускация или потенциально опасные конструкции)",
+            "description": "Низкая опасность (обфускация)",
             "patterns": [
                 {"regex": r"Chr\s*\(", "explanation": "Использование Chr() может быть частью обфускации строк"},
                 {"regex": r"StrReverse\s*\(", "explanation": "StrReverse может использоваться для сокрытия строк"},
@@ -334,8 +384,8 @@ class SimpleVBAExtractor:
     def __init__(self, root):
         self.root = root
         self.root.title("VBA Extractor")
-        self.root.geometry("1050x720")
-        self.root.minsize(880, 600)
+        self.root.geometry("1070x720")   # расширено для размещения кнопок
+        self.root.minsize(950, 600)
 
         self.current_theme = "dark"
         self.colors = self.THEMES[self.current_theme]
@@ -346,6 +396,7 @@ class SimpleVBAExtractor:
         self.last_hash_value = ""
         self.hash_displayed = False
         self.scan_results = {}
+        self._line_map = {}
 
         self.w = {}
         self._create_ui()
@@ -376,20 +427,23 @@ class SimpleVBAExtractor:
         self.paned.add(self.right_frame)
         self.w["right_frame"] = self.right_frame
 
-        # Верх: поле ввода файла + кнопка Обзор + тема
+        # Верх: поле ввода + Обзор + Тема
         self.top_frame = tk.Frame(self.right_frame)
         self.top_frame.pack(pady=(0, 8), fill=tk.X)
         self.w["top_frame"] = self.top_frame
 
-        self.file_entry = tk.Entry(self.top_frame, textvariable=self.file_path, width=52, font=("Consolas", 9), relief=tk.SOLID, bd=1)
+        self.file_entry = tk.Entry(self.top_frame, textvariable=self.file_path, width=52,
+                                   font=("Consolas", 9), relief=tk.SOLID, bd=1)
         self.file_entry.pack(side=tk.LEFT, padx=6)
         self.w["file_entry"] = self.file_entry
 
-        self.btn_browse = tk.Button(self.top_frame, text="Обзор...", command=self.select_file, font=("Segoe UI", 9), relief=tk.RAISED, bd=2)
+        self.btn_browse = tk.Button(self.top_frame, text="Обзор...", command=self.select_file,
+                                    font=("Segoe UI", 9), relief=tk.RAISED, bd=2)
         self.btn_browse.pack(side=tk.LEFT, padx=(0, 4))
         self.w["btn_browse"] = self.btn_browse
 
-        self.btn_theme = tk.Button(self.top_frame, text="🌓 Тема", command=self.toggle_theme, font=("Segoe UI", 9), relief=tk.RAISED, bd=2)
+        self.btn_theme = tk.Button(self.top_frame, text="🌓 Тема", command=self.toggle_theme,
+                                   font=("Segoe UI", 9), relief=tk.RAISED, bd=2)
         self.btn_theme.pack(side=tk.RIGHT)
         self.w["btn_theme"] = self.btn_theme
 
@@ -397,35 +451,44 @@ class SimpleVBAExtractor:
         self.btn_frame = tk.Frame(self.right_frame)
         self.btn_frame.pack(pady=(0, 8), fill=tk.X)
         self.w["btn_frame"] = self.btn_frame
+
         btn_opts = {"font": ("Segoe UI", 9), "relief": tk.RAISED, "bd": 2, "padx": 14, "pady": 4}
-        self.btn_extract_vba = tk.Button(self.btn_frame, text="Извлечь VBA", command=self.extract_vba_threaded, **btn_opts)
+
+        self.btn_extract_vba = tk.Button(self.btn_frame, text="Извлечь VBA",
+                                         command=self.extract_vba_threaded, **btn_opts)
         self.btn_extract_vba.pack(side=tk.LEFT, padx=3)
         self.w["btn_extract_vba"] = self.btn_extract_vba
 
-        self.btn_scan = tk.Button(self.btn_frame, text="Поиск подозрительного кода", command=self.scan_all_modules_threaded, **btn_opts)
+        self.btn_scan = tk.Button(self.btn_frame, text="Поиск подозрительного кода",
+                                  command=self.scan_all_modules_threaded, **btn_opts)
         self.btn_scan.pack_forget()
         self.w["btn_scan"] = self.btn_scan
 
-        self.btn_extract_hash = tk.Button(self.btn_frame, text="Извлечь хэш пароля", command=self.extract_hash_threaded, **btn_opts)
+        self.btn_extract_hash = tk.Button(self.btn_frame, text="Извлечь хэш пароля",
+                                          command=self.extract_hash_threaded, **btn_opts)
         self.btn_extract_hash.pack(side=tk.LEFT, padx=3)
         self.w["btn_extract_hash"] = self.btn_extract_hash
 
-        self.btn_copy_hash = tk.Button(self.btn_frame, text="Копировать хэш", command=self.copy_hash_only, state=tk.DISABLED, **btn_opts)
+        # Кнопка "Копировать хэш" теперь левее "Снять защиту VBA"
+        self.btn_copy_hash = tk.Button(self.btn_frame, text="Копировать хэш",
+                                       command=self.copy_hash_only, state=tk.DISABLED, **btn_opts)
         self.btn_copy_hash.pack_forget()
         self.w["btn_copy_hash"] = self.btn_copy_hash
+
+        self.btn_unlock_vba = tk.Button(self.btn_frame, text="🔓 Снять защиту VBA",
+                                        command=self.unlock_vba_threaded, **btn_opts)
+        self.btn_unlock_vba.pack_forget()
+        self.w["btn_unlock_vba"] = self.btn_unlock_vba
 
         self.progress = ttk.Progressbar(self.right_frame, mode='indeterminate')
         self.w["progress"] = self.progress
 
-        # Область вывода (только plain_text, code_text закомментирован)
-        self.plain_text = scrolledtext.ScrolledText(
-            self.right_frame, wrap=tk.WORD, font=("Consolas", 10),
-            relief=tk.SOLID, bd=1, padx=8, pady=6
+        # Область вывода с нумерацией строк
+        self.plain_text = LineNumberedText(
+            self.right_frame, theme_colors=self.colors, wrap='word'
         )
-        # self.code_text = LineNumberedText(self.right_frame, theme_colors=self.colors) # [ОТКЛЮЧЕНО]
         self.active_text_widget = self.plain_text
         self.plain_text.pack(pady=(0, 6), fill=tk.BOTH, expand=True)
-        # self.code_text.pack_forget() # [ОТКЛЮЧЕНО]
 
         self.w["output_text"] = self.plain_text
         self._configure_syntax_tags()
@@ -435,25 +498,31 @@ class SimpleVBAExtractor:
         self.action_frame.pack(pady=(0, 4), fill=tk.X)
         self.w["action_frame"] = self.action_frame
         action_opts = {"font": ("Segoe UI", 9), "relief": tk.RAISED, "bd": 2, "padx": 12, "pady": 3}
+
         self.w["btn_copy_mod"] = tk.Button(self.action_frame, text="Копировать модуль", command=self.copy_current_module, **action_opts)
         self.w["btn_copy_mod"].pack(side=tk.LEFT, padx=2)
+
         self.w["btn_copy_all"] = tk.Button(self.action_frame, text="Копировать всё", command=self.copy_all, **action_opts)
         self.w["btn_copy_all"].pack(side=tk.LEFT, padx=2)
+
         self.w["btn_save_mod"] = tk.Button(self.action_frame, text="Сохранить модуль", command=self.save_current_module, **action_opts)
         self.w["btn_save_mod"].pack(side=tk.LEFT, padx=2)
+
         self.w["btn_save_all"] = tk.Button(self.action_frame, text="Сохранить всё (ZIP)", command=self.save_all_to_zip, **action_opts)
         self.w["btn_save_all"].pack(side=tk.LEFT, padx=2)
+
         self.w["btn_show_all"] = tk.Button(self.action_frame, text="Показать все", command=self.show_all_modules, **action_opts)
         self.w["btn_show_all"].pack(side=tk.LEFT, padx=2)
+
         self.w["btn_open_txt"] = tk.Button(self.action_frame, text="Открыть в .txt", command=self.open_current_in_txt, **action_opts)
         self.w["btn_open_txt"].pack(side=tk.LEFT, padx=2)
+
         self.w["btn_clear"] = tk.Button(self.action_frame, text="Очистить", command=self.clear_output, **action_opts)
         self.w["btn_clear"].pack(side=tk.LEFT, padx=2)
 
         self.create_context_menu()
         self.setup_hotkeys()
 
-    # ---------- Подсветка синтаксиса VBA ----------
     def _configure_syntax_tags(self):
         c = self.colors
         tags = {
@@ -468,17 +537,13 @@ class SimpleVBAExtractor:
         }
         for tag, conf in tags.items():
             self.plain_text.tag_configure(tag, **conf)
-            # if self.code_text.text: self.code_text.text.tag_configure(tag, **conf) # [ОТКЛЮЧЕНО]
 
         self.plain_text.tag_configure("bg_high", background="#8b0000", foreground="white")
         self.plain_text.tag_configure("bg_medium", background="#b85c00", foreground="white")
         self.plain_text.tag_configure("bg_low", background="#b8860b", foreground="white")
-        # if self.code_text.text: ... # [ОТКЛЮЧЕНО]
 
     def apply_syntax_highlighting(self):
-        text_widget = self.plain_text # [ОТКЛЮЧЕНО: принудительно plain_text]
-        # if hasattr(self.active_text_widget, 'text'): text_widget = self.active_text_widget.text
-        
+        text_widget = self.plain_text
         content = text_widget.get("1.0", tk.END)
         for tag in ("keyword", "string", "number", "builtin", "type", "comment", "separator", "operator"):
             text_widget.tag_remove(tag, "1.0", tk.END)
@@ -526,17 +591,26 @@ class SimpleVBAExtractor:
         text_widget.tag_raise("comment")
 
     def _insert_separators(self, code):
+        text, _ = self._insert_separators_with_map(code)
+        return text
+
+    def _insert_separators_with_map(self, code):
         lines = code.splitlines()
         new_lines = []
+        line_map = {}
         sep_line = "─" * 80
-        for i, line in enumerate(lines):
+        widget_line = 1
+        for code_idx, line in enumerate(lines):
+            code_line_num = code_idx + 1
             new_lines.append(line)
+            line_map[code_line_num] = widget_line
+            widget_line += 1
             if re.match(r'^\s*End\s+(Sub|Function|Property)\b', line, re.IGNORECASE):
-                if i < len(lines) - 1:
+                if code_idx < len(lines) - 1:
                     new_lines.append(sep_line)
-        return '\n'.join(new_lines)
+                    widget_line += 1
+        return '\n'.join(new_lines), line_map
 
-    # ================== Тема ==================
     def toggle_theme(self):
         self.current_theme = "light" if self.current_theme == "dark" else "dark"
         self.colors = self.THEMES[self.current_theme]
@@ -588,12 +662,14 @@ class SimpleVBAExtractor:
             if key in self.w:
                 self.w[key].configure(bg=c["btn_bg"], fg=c["btn_fg"], activebackground=c["btn_active"])
 
-        self.plain_text.configure(
-            bg=c["bg_main"], fg=c["fg_text"], insertbackground=c["fg_text"],
-            highlightbackground=c["border"], highlightthickness=1,
-            selectbackground=c["selection"], selectforeground="white"
-        )
-        # self.code_text.apply_theme(c) # [ОТКЛЮЧЕНО]
+        # Розовая кнопка снятия защиты
+        if "btn_unlock_vba" in self.w and self.w["btn_unlock_vba"] is not None:
+            self.w["btn_unlock_vba"].configure(
+                bg="#e91e63", fg="white",
+                activebackground="#c2185b", activeforeground="white"
+            )
+
+        self.plain_text.apply_theme(c)
         self._configure_syntax_tags()
         self.create_context_menu()
 
@@ -603,15 +679,13 @@ class SimpleVBAExtractor:
             return f"#{max(0,r-amount):02x}{max(0,g-amount):02x}{max(0,b-amount):02x}"
         return color
 
-    # ================== Горячие клавиши ==================
     def setup_hotkeys(self):
         self.plain_text.bind("<Control-c>", self.copy_selection)
         self.plain_text.bind("<Control-v>", self.paste_text)
         self.plain_text.bind("<Control-a>", self.select_all)
-        # self.code_text.bind(...) # [ОТКЛЮЧЕНО]
 
     def copy_selection(self, event=None):
-        widget = self.plain_text # [ОТКЛЮЧЕНО: принудительно plain_text]
+        widget = self.plain_text
         try:
             selected = widget.get(tk.SEL_FIRST, tk.SEL_LAST)
             self.root.clipboard_clear()
@@ -637,7 +711,6 @@ class SimpleVBAExtractor:
         widget.see(tk.INSERT)
         return "break"
 
-    # ================== Приветствие ==================
     def show_welcome_message(self):
         text = """VBA Extractor — извлечение макросов и хэшей паролей
 
@@ -651,24 +724,29 @@ class SimpleVBAExtractor:
   3. Нажмите "Извлечь хэш пароля" — получите хэш для подбора
   4. Кнопка "Копировать хэш" появится автоматически после извлечения
   5. После извлечения VBA станет доступна кнопка "Поиск подозрительного кода"
+  6. Также станет доступна кнопка "Снять защиту VBA" (розовая) — убирает пароль с VBA-проекта
 
 """
         self._set_output_text(text, is_code=False)
-        self.apply_syntax_highlighting()
 
     def _set_output_text(self, text, is_code=False):
-        # [ОТКЛЮЧЕНО: переключение на code_text]
         self.active_text_widget = self.plain_text
         self.plain_text.pack(pady=(0, 6), fill=tk.BOTH, expand=True)
-        
         self.plain_text.delete(1.0, tk.END)
         self.plain_text.insert(1.0, text)
         self.plain_text.see("1.0")
 
+        # Управление номерами строк и переносом
+        if is_code:
+            self.plain_text.enable_line_numbers(True)
+            self.plain_text.configure_wrap('none')      # без переноса
+        else:
+            self.plain_text.enable_line_numbers(False)
+            self.plain_text.configure_wrap('word')      # с переносом
+
     def _clear_output(self):
         self.plain_text.delete(1.0, tk.END)
 
-    # ================== Выбор файла ==================
     def select_file(self):
         filename = filedialog.askopenfilename(
             title="Выберите файл с макросами",
@@ -683,18 +761,21 @@ class SimpleVBAExtractor:
         self.w["btn_extract_hash"].config(state=tk.NORMAL, text="Извлечь хэш пароля")
         if hide_scan:
             self.w["btn_scan"].pack_forget()
+            self.w["btn_unlock_vba"].pack_forget()
+            self.w["btn_copy_hash"].pack_forget()
         else:
             if self.modules:
                 self.w["btn_scan"].pack(side=tk.LEFT, padx=3, before=self.w["btn_extract_hash"])
+                self.w["btn_unlock_vba"].pack(side=tk.LEFT, padx=3)
+                # Кнопка "Копировать хэш" показывается только при наличии хэша
             else:
                 self.w["btn_scan"].pack_forget()
-        self.w["btn_copy_hash"].pack_forget()
+                self.w["btn_unlock_vba"].pack_forget()
         self.w["btn_copy_hash"].config(state=tk.DISABLED)
         self.last_hash_value = ""
         self.hash_displayed = False
         self.scan_results = {}
 
-    # ================== Прогресс-бар ==================
     def start_progress(self):
         self.progress.pack(pady=(0, 6), fill=tk.X)
         self.progress.start(10)
@@ -703,7 +784,6 @@ class SimpleVBAExtractor:
         self.progress.stop()
         self.progress.pack_forget()
 
-    # ================== Извлечение VBA ==================
     def extract_vba_threaded(self):
         if not self.file_path.get():
             messagebox.showwarning("Предупреждение", "Сначала выберите файл", parent=self.root)
@@ -750,21 +830,29 @@ class SimpleVBAExtractor:
             self._set_output_text(self.extraction_info, is_code=False)
             messagebox.showinfo("Результат", "Макросы не найдены.", parent=self.root)
             self.w["btn_scan"].pack_forget()
+            self.w["btn_unlock_vba"].pack_forget()
+            self.w["btn_copy_hash"].pack_forget()
         else:
             for name, _ in self.modules:
                 self.modules_listbox.insert(tk.END, name)
             self.modules_listbox.selection_set(0)
             self.current_module = 0
             self.display_module(0)
+            # Показываем кнопки поиска и снятия защиты
             self.w["btn_scan"].pack(side=tk.LEFT, padx=3, before=self.w["btn_extract_hash"])
             self.w["btn_scan"].config(state=tk.NORMAL)
+            # Кнопка "Копировать хэш" ещё не нужна, но место для неё зарезервируем
+            self.w["btn_unlock_vba"].pack(side=tk.LEFT, padx=3)
+            self.w["btn_unlock_vba"].config(state=tk.NORMAL)
+            self.w["btn_copy_hash"].pack_forget()  # скрыта
         self.w["btn_extract_vba"].config(state=tk.NORMAL, text="Извлечь VBA")
         self.w["btn_extract_hash"].config(state=tk.NORMAL)
 
     def display_module(self, index):
         if 0 <= index < len(self.modules):
             name, code = self.modules[index]
-            display_code = self._insert_separators(code)
+            display_code, line_map = self._insert_separators_with_map(code)
+            self._line_map = line_map
             self._set_output_text(display_code, is_code=True)
             self.apply_syntax_highlighting()
             if name in self.scan_results:
@@ -790,7 +878,6 @@ class SimpleVBAExtractor:
         self._set_output_text(content, is_code=False)
         self.apply_syntax_highlighting()
 
-    # ================== Поиск подозрительного кода ==================
     def scan_all_modules_threaded(self):
         if not self.modules:
             messagebox.showwarning("Нет данных", "Сначала извлеките VBA-код.", parent=self.root)
@@ -861,27 +948,31 @@ class SimpleVBAExtractor:
         return {k: v for k, v in results.items() if v}
 
     def _highlight_lines_in_current_view(self, results):
-        text_widget = self.plain_text # [ОТКЛЮЧЕНО: code_text]
+        tw = self.plain_text
         for tag in ("bg_high", "bg_medium", "bg_low"):
-            text_widget.tag_remove(tag, "1.0", tk.END)
-
-        # [ОТКЛЮЧЕНО: логика маппинга строк]
-        # if not hasattr(self.active_text_widget, 'line_mapping'): return
-        # ... 
+            tw.tag_remove(tag, "1.0", tk.END)
+        level_tag = {"high": "bg_high", "medium": "bg_medium", "low": "bg_low"}
+        for level, items in results.items():
+            tag = level_tag.get(level)
+            if not tag:
+                continue
+            for item in items:
+                code_line = item["line"]
+                widget_line = self._line_map.get(code_line, code_line)
+                tw.tag_add(tag, f"{widget_line}.0", f"{widget_line}.end")
+        for tag in ("bg_high", "bg_medium", "bg_low"):
+            tw.tag_raise(tag)
 
     def _scroll_to_first_suspicious(self, results):
-        first_original = None
+        first_code_line = None
         for level in ["high", "medium", "low"]:
-            items = results.get(level, [])
-            if items:
-                line = min(item["line"] for item in items)
-                if first_original is None or line < first_original:
-                    first_original = line
-        # [ОТКЛЮЧЕНО: see_original_line]
-        if first_original is not None and hasattr(self.plain_text, 'see'):
-            self.plain_text.see(f"{first_original}.0")
+            for item in results.get(level, []):
+                ln = item["line"]
+                if first_code_line is None or ln < first_code_line:
+                    first_code_line = ln
+        if first_code_line is not None:
+            self.plain_text.see_code_line(first_code_line)
 
-    # ================== Извлечение хэша ==================
     def extract_hash_threaded(self):
         if not self.file_path.get():
             messagebox.showwarning("Предупреждение", "Сначала выберите файл", parent=self.root)
@@ -969,23 +1060,13 @@ class SimpleVBAExtractor:
                 result.append("🔐 НОВЫЙ ФОРМАТ (Office 2013–2024)\n")
                 result.append("-"*40 + "\n")
                 result.append(f"Хэш:\n  {h}\n\n")
-                result.append("Обнаруженные поля:\n")
                 if cmg: result.append(f"  CMG : {cmg.group(1)}\n")
                 if dpb: result.append(f"  DPB : {dpb.group(1)}\n")
                 if gc:  result.append(f"  GC  : {gc.group(1)}\n")
                 if wid: result.append(f"  ID  : {wid.group(1)}\n")
                 if wep: result.append(f"  WEP : {wep.group(1)}\n")
-                result.append("\nЧто означает каждый параметр:\n")
-                result.append("  CMG — encrypted state\n")
-                result.append("  DPB — password verifier\n")
-                result.append("  GC  — project constants\n")
-                result.append("  ID  — project identifier\n")
-                result.append("  WEP — encryption flags\n")
                 result.append("\nИспользование с hashcat:\n")
                 result.append("  Режим: -m 29500 (VBA)\n")
-                result.append("  John the Ripper (office2john) также поддерживает этот формат.\n\n")
-                result.append("Пример:\n")
-                result.append("  office2john.py file.xlsm > hash.txt\n")
                 result.append("  hashcat -m 29500 hash.txt wordlist.txt\n\n")
 
             elif dpb:
@@ -995,11 +1076,10 @@ class SimpleVBAExtractor:
                 result.append("-"*40 + "\n")
                 result.append(f"{h}\n\n")
                 result.append("Найдены не все поля защиты VBA-проекта.\n")
-                result.append("Для полного modern hash обычно нужны: CMG + DPB + GC\n\n")
 
             if not hashes["old"] and not hashes["new"] and not hashes.get("partial"):
                 result.append("Не найдено полей защиты (DPB, CMG, GC, ID, WEP).\n")
-                result.append("Возможно, VBA-проект не защищён паролем или использует нестандартную защиту.\n")
+                result.append("Возможно, VBA-проект не защищён паролем.\n")
             else:
                 self.last_hash_value = "\n".join(h for h in [hashes["old"], hashes["new"]] if h)
 
@@ -1017,20 +1097,186 @@ class SimpleVBAExtractor:
         self.w["btn_extract_hash"].config(state=tk.NORMAL, text="Извлечь хэш пароля")
         self.w["btn_extract_vba"].config(state=tk.NORMAL)
         if self.last_hash_value:
-            self.w["btn_copy_hash"].pack(side=tk.LEFT, padx=3)
-            self.w["btn_copy_hash"].config(bg=self.colors["accent_orange"], fg="white")
+            # Показываем кнопку "Копировать хэш" левее кнопки "Снять защиту VBA"
+            # Если кнопка "Снять защиту" уже видна, вставим перед ней
+            if self.w["btn_unlock_vba"].winfo_ismapped():
+                self.w["btn_copy_hash"].pack(side=tk.LEFT, padx=3, before=self.w["btn_unlock_vba"])
+            else:
+                # Если кнопка "Снять защиту" скрыта, размещаем после кнопки "Извлечь хэш"
+                self.w["btn_copy_hash"].pack(side=tk.LEFT, padx=3, before=self.w["btn_extract_hash"])
             self.w["btn_copy_hash"].config(state=tk.NORMAL)
             self.hash_displayed = True
         else:
             self.hash_displayed = False
-        if self.modules and self.w["btn_scan"].winfo_ismapped() is False:
+        if self.modules and not self.w["btn_scan"].winfo_ismapped():
             self.w["btn_scan"].pack(side=tk.LEFT, padx=3, before=self.w["btn_extract_hash"])
 
     def display_result(self, text):
         self._set_output_text(text, is_code=False)
         self.apply_syntax_highlighting()
 
-    # ================== Копирование / сохранение ==================
+    def unlock_vba_threaded(self):
+        if not self.file_path.get():
+            messagebox.showwarning("Предупреждение", "Сначала выберите файл", parent=self.root)
+            return
+        self.w["btn_unlock_vba"].config(state=tk.DISABLED, text="Снятие защиты...")
+        thread = threading.Thread(target=self.unlock_vba)
+        thread.daemon = True
+        thread.start()
+
+    def unlock_vba(self):
+        path = self.file_path.get()
+        result = ["🔓 Попытка снять защиту VBA-проекта...\n", "="*60 + "\n\n"]
+        output_path = self._get_unblocked_path(path)
+
+        try:
+            shutil.copy2(path, output_path)
+            result.append(f"✅ Создан файл: {os.path.basename(output_path)}\n\n")
+
+            ext = path.lower()
+            if ext.endswith('.xls'):
+                msg = self._unlock_old_xls(path, output_path)
+            elif ext.endswith(('.xlsm', '.xlsb', '.xltm', '.xlam', '.docm', '.pptm')):
+                msg = self._unlock_new_office(path, output_path)
+            else:
+                msg = "❌ Формат файла не поддерживается для автоматического снятия защиты."
+
+            result.append(msg)
+
+        except Exception as e:
+            result.append(f"❌ Ошибка при снятии защиты: {str(e)}")
+        finally:
+            self.root.after(0, self._unlock_complete, "".join(result), output_path)
+
+    def _get_unblocked_path(self, original_path):
+        base, ext = os.path.splitext(original_path)
+        return f"{base}_unblocked{ext}"
+
+    def _unlock_old_xls(self, input_path, output_path):
+        with open(input_path, "rb") as f:
+            data = f.read()
+        text = data.decode('latin-1', errors='ignore')
+        match = re.search(r'(DPB=)([A-Fa-f0-9]+)', text, re.IGNORECASE)
+        if not match:
+            return "⚠ Поле DPB не найдено. Файл возможно не защищён паролем."
+        new_text = text.replace(match.group(0), "DPx=" + match.group(2), 1)
+        with open(output_path, "wb") as f:
+            f.write(new_text.encode('latin-1'))
+        return (
+            "✅ Защита снята (DPB → DPx).\n\n"
+            f"Создан файл: {os.path.basename(output_path)}\n\n"
+            "Что делать дальше:\n"
+            "  1. Откройте созданный файл в Excel\n"
+            "  2. Если появится предупреждение о восстановлении проекта — нажмите ОК\n"
+            "  3. Откройте редактор VBA: Alt+F11\n"
+            "  4. Пароль запрашиваться не будет\n"
+        )
+
+    def _unlock_new_office(self, input_path, output_path):
+        try:
+            with zipfile.ZipFile(input_path, 'r') as z:
+                namelist = z.namelist()
+        except Exception as e:
+            return f"❌ Не удалось открыть файл как ZIP: {e}"
+
+        vba_path = None
+        for candidate in ['xl/vbaProject.bin', 'word/vbaProject.bin',
+                          'ppt/vbaProject.bin', 'vbaProject.bin']:
+            if candidate in namelist:
+                vba_path = candidate
+                break
+        if not vba_path:
+            return "❌ Файл vbaProject.bin не найден внутри архива."
+
+        with zipfile.ZipFile(input_path, 'r') as zf:
+            vba_data = bytearray(zf.read(vba_path))
+
+        if bytes(vba_data[:8]) != b'\xD0\xCF\x11\xE0\xA1\xB1\x1A\xE1':
+            return "❌ vbaProject.bin не является корректным OLE-файлом."
+
+        patch_result = self._patch_vba_project_bin_bytes(vba_data)
+        if not patch_result["success"]:
+            return f"❌ {patch_result['error']}"
+
+        patched_vba_data = patch_result["data"]
+
+        with zipfile.ZipFile(input_path, 'r') as z_src:
+            with zipfile.ZipFile(output_path, 'w', compression=zipfile.ZIP_DEFLATED) as z_dst:
+                for item in namelist:
+                    if item == vba_path:
+                        z_dst.writestr(item, bytes(patched_vba_data))
+                    else:
+                        z_dst.writestr(item, z_src.read(item))
+
+        return (
+            "✅ Защита снята.\n\n"
+            f"Создан файл: {os.path.basename(output_path)}\n\n"
+            f"Метод: удалены строки защиты из потока PROJECT ({patch_result['removed']} полей)\n\n"
+            "Что делать дальше:\n"
+            "  1. Откройте созданный файл в Excel/Word/PowerPoint\n"
+            "  2. Если появится предупреждение о восстановлении проекта — нажмите ОК\n"
+            "  3. Откройте редактор VBA: Alt+F11\n"
+            "  4. Пароль запрашиваться не будет\n"
+        )
+
+    def _patch_vba_project_bin_bytes(self, vba_bytes):
+        data = bytearray(vba_bytes)
+        text = data.decode('latin-1', errors='replace')
+
+        protection_patterns = [
+            r'CMG="[A-Fa-f0-9]*"\r?\n',
+            r'DPB="[A-Fa-f0-9]*"\r?\n',
+            r'GC="[A-Fa-f0-9]*"\r?\n',
+            r'WEP="[A-Fa-f0-9]*"\r?\n',
+            r'ID="[A-Fa-f0-9]*"\r?\n',
+            r'CMG=[A-Fa-f0-9]+\r?\n',
+            r'DPB=[A-Fa-f0-9]+\r?\n',
+            r'GC=[A-Fa-f0-9]+\r?\n',
+            r'WEP=[A-Fa-f0-9]+\r?\n',
+            r'ID=[A-Fa-f0-9]+\r?\n',
+        ]
+
+        removed = 0
+        new_text = text
+        seen_keys = set()
+        for pat in protection_patterns:
+            key = pat.split('=')[0]
+            if key in seen_keys:
+                continue
+            new_candidate = re.sub(pat, '', new_text, flags=re.IGNORECASE)
+            if new_candidate != new_text:
+                removed += 1
+                seen_keys.add(key)
+                new_text = new_candidate
+
+        if removed == 0:
+            return {"success": False,
+                    "error": "Поля защиты не найдены. Возможно, файл не защищён "
+                             "или использует нестандартный формат."}
+
+        new_bytes = bytearray(new_text.encode('latin-1', errors='replace'))
+        orig_len = len(data)
+        if len(new_bytes) < orig_len:
+            new_bytes += b'\x00' * (orig_len - len(new_bytes))
+        elif len(new_bytes) > orig_len:
+            new_bytes = new_bytes[:orig_len]
+
+        return {"success": True, "removed": removed, "data": new_bytes}
+
+    def _unlock_complete(self, text, output_path):
+        self.w["btn_unlock_vba"].config(state=tk.NORMAL, text="🔓 Снять защиту VBA")
+        self._set_output_text(text, is_code=False)
+        if os.path.exists(output_path):
+            messagebox.showinfo("Готово",
+                f"Файл создан:\n{os.path.basename(output_path)}\n\n"
+                "Откройте его в Excel/Word/PowerPoint.\n"
+                "Если появится предупреждение о восстановлении проекта — нажмите ОК.\n"
+                "После этого зайдите в редактор VBA (Alt+F11) — пароль запрашиваться не будет.",
+                parent=self.root)
+        else:
+            messagebox.showwarning("Предупреждение",
+                "Файл не был создан. Подробности — в области вывода.", parent=self.root)
+
     def copy_hash_only(self):
         if not self.last_hash_value:
             messagebox.showwarning("Нет хэша", "Сначала извлеките хэш пароля", parent=self.root)
@@ -1137,7 +1383,6 @@ class SimpleVBAExtractor:
         except Exception as e:
             messagebox.showerror("Ошибка", f"Не удалось открыть файл: {e}", parent=self.root)
 
-    # ================== Очистка ==================
     def clear_output(self):
         self._clear_output()
         self.modules_listbox.delete(0, tk.END)
@@ -1146,7 +1391,6 @@ class SimpleVBAExtractor:
         self._reset_buttons()
         self.show_welcome_message()
 
-    # ================== Контекстное меню ==================
     def create_context_menu(self):
         c = self.colors
         if hasattr(self, 'context_menu'): self.context_menu.destroy()
@@ -1162,7 +1406,6 @@ class SimpleVBAExtractor:
         def show_menu(event):
             self.context_menu.post(event.x_root, event.y_root)
         self.plain_text.bind("<Button-3>", show_menu)
-        # self.code_text.bind("<Button-3>", show_menu) # [ОТКЛЮЧЕНО]
 
 
 if __name__ == "__main__":
